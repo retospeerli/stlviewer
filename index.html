@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>STL-Bibliothek</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STL-Bibliothek</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="app">
@@ -14,16 +14,18 @@
     <input id="searchInput" class="search" type="search" placeholder="Modelle suchen …">
     <div id="library"><div class="empty">Bibliothek wird geladen …</div></div>
   </aside>
+
   <main class="main">
     <div class="toolbar">
       <button id="resetBtn">Ansicht zurücksetzen</button>
       <button id="wireframeBtn">Drahtgitter: aus</button>
       <button id="fullscreenBtn">Vollbild</button>
       <a id="downloadBtn" class="button disabled" href="#" download>STL herunterladen</a>
-      <label class="button file-button">Eigene STL öffnen<input id="fileInput" type="file" accept=".stl"></label>
-      <div class="spacer"></div>
-      <label class="color-label">Farbe <input id="colorPicker" type="color" value="#d4a017"></label>
+      <label class="button">Eigene STL öffnen<input id="fileInput" type="file" accept=".stl" hidden></label>
+      <span class="spacer"></span>
+      <label>Farbe <input id="colorPicker" type="color" value="#d4a017"></label>
     </div>
+
     <div class="viewer-wrap" id="viewerWrap">
       <div id="viewer"></div>
       <div class="loading" id="loading">Modell wird geladen …</div>
@@ -31,7 +33,13 @@
     </div>
   </main>
 </div>
-<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.180.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.180.0/examples/jsm/"}}</script>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://unpkg.com/three@0.180.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.180.0/examples/jsm/"
+}}
+</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
