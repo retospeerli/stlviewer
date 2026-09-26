@@ -1,0 +1,20 @@
+[
+  {
+    "title": "Rakete",
+    "category": "Weltraum",
+    "description": "Beispiel-Eintrag – echte STL in diesen Pfad legen.",
+    "file": "stl/Weltraum/rakete.stl"
+  },
+  {
+    "title": "Ammonit",
+    "category": "Fossilien",
+    "description": "Beispiel-Eintrag – echte STL in diesen Pfad legen.",
+    "file": "stl/Fossilien/ammonit.stl"
+  },
+  {
+    "title": "Zahnrad",
+    "category": "Technik",
+    "description": "Beispiel-Eintrag – echte STL in diesen Pfad legen.",
+    "file": "stl/Technik/zahnrad.stl"
+  }
+]
