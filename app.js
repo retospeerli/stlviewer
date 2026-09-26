@@ -2,23 +2,172 @@ import * as THREE from "three";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
-const library=document.getElementById("library"),searchInput=document.getElementById("searchInput"),viewer=document.getElementById("viewer"),viewerWrap=document.getElementById("viewerWrap"),fileInput=document.getElementById("fileInput"),resetBtn=document.getElementById("resetBtn"),wireframeBtn=document.getElementById("wireframeBtn"),fullscreenBtn=document.getElementById("fullscreenBtn"),downloadBtn=document.getElementById("downloadBtn"),colorPicker=document.getElementById("colorPicker"),loading=document.getElementById("loading"),status=document.getElementById("status");
+const CONFIG={OWNER:"",REPO:"",BRANCH:"main",STL_ROOT:"stl"};
+
+const $=id=>document.getElementById(id);
+const library=$("library"),searchInput=$("searchInput"),viewer=$("viewer"),viewerWrap=$("viewerWrap"),
+fileInput=$("fileInput"),resetBtn=$("resetBtn"),wireframeBtn=$("wireframeBtn"),
+fullscreenBtn=$("fullscreenBtn"),downloadBtn=$("downloadBtn"),colorPicker=$("colorPicker"),
+loading=$("loading"),status=$("status");
+
+function detectRepo(){
+  if(CONFIG.OWNER&&CONFIG.REPO)return{owner:CONFIG.OWNER,repo:CONFIG.REPO};
+  const host=location.hostname;
+  const parts=location.pathname.split("/").filter(Boolean);
+  if(host.endsWith(".github.io")){
+    const owner=host.replace(".github.io","");
+    return {owner,repo:parts.length?parts[0]:`${owner}.github.io`};
+  }
+  return null;
+}
+const repoInfo=detectRepo();
+const apiTreeUrl=()=>`https://api.github.com/repos/${repoInfo.owner}/${repoInfo.repo}/git/trees/${encodeURIComponent(CONFIG.BRANCH)}?recursive=1`;
+const rawUrl=path=>`https://raw.githubusercontent.com/${repoInfo.owner}/${repoInfo.repo}/${CONFIG.BRANCH}/${path}`;
+
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(45,viewer.clientWidth/viewer.clientHeight,.1,100000);
-const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));renderer.setSize(viewer.clientWidth,viewer.clientHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;viewer.appendChild(renderer.domElement);
-const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.08;controls.screenSpacePanning=true;
-scene.add(new THREE.HemisphereLight(0xffffff,0x666666,2));const l1=new THREE.DirectionalLight(0xffffff,3);l1.position.set(3,4,5);scene.add(l1);const l2=new THREE.DirectionalLight(0xffffff,1.5);l2.position.set(-4,2,-3);scene.add(l2);
-const grid=new THREE.GridHelper(200,20,0x999999,0xcccccc);grid.material.opacity=.25;grid.material.transparent=true;scene.add(grid);
-const loader=new STLLoader();const material=new THREE.MeshStandardMaterial({color:colorPicker.value,roughness:.55,metalness:.08});let mesh=null,wireframe=false,allModels=[],currentFile=null;
-function clearModel(){if(!mesh)return;scene.remove(mesh);mesh.geometry?.dispose();mesh=null}
-function fitCameraToObject(object){const box=new THREE.Box3().setFromObject(object),size=new THREE.Vector3(),center=new THREE.Vector3();box.getSize(size);box.getCenter(center);const maxDim=Math.max(size.x,size.y,size.z)||1;const fov=THREE.MathUtils.degToRad(camera.fov);let z=Math.abs(maxDim/(2*Math.tan(fov/2)))*1.65;camera.position.set(center.x+z*.65,center.y+z*.45,center.z+z);camera.near=Math.max(maxDim/1000,.01);camera.far=Math.max(maxDim*100,1000);camera.updateProjectionMatrix();controls.target.copy(center);controls.minDistance=maxDim*.05;controls.maxDistance=maxDim*20;controls.update();grid.scale.setScalar(Math.max(maxDim/200,.01))}
-function displayGeometry(geometry,filename){clearModel();geometry.computeVertexNormals();geometry.center();geometry.computeBoundingBox();mesh=new THREE.Mesh(geometry,material);mesh.rotation.x=-Math.PI/2;scene.add(mesh);fitCameraToObject(mesh);const triangles=Math.floor((geometry.attributes.position?.count||0)/3),size=new THREE.Vector3();geometry.boundingBox.getSize(size);status.textContent=`${filename} · ${triangles.toLocaleString("de-CH")} Dreiecke · ${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)} mm`}
-function setLoading(v){loading.classList.toggle("show",v)}
-async function loadRemoteModel(model){setLoading(true);currentFile=model.file;markActive();try{const r=await fetch(model.file);if(!r.ok)throw new Error(`HTTP ${r.status}`);displayGeometry(loader.parse(await r.arrayBuffer()),model.title||model.file);downloadBtn.href=model.file;downloadBtn.download=model.downloadName||model.file.split("/").pop();downloadBtn.classList.remove("disabled")}catch(e){console.error(e);status.textContent="Das Modell konnte nicht geladen werden."}finally{setLoading(false)}}
-function openLocalFile(file){if(!file)return;if(!file.name.toLowerCase().endsWith(".stl")){status.textContent="Bitte eine STL-Datei auswählen.";return}currentFile=null;markActive();const reader=new FileReader();reader.onload=e=>{try{displayGeometry(loader.parse(e.target.result),file.name);downloadBtn.classList.add("disabled");downloadBtn.removeAttribute("href")}catch(err){console.error(err);status.textContent="Die STL-Datei konnte nicht gelesen werden."}};reader.readAsArrayBuffer(file)}
-async function loadLibrary(){try{const r=await fetch("models.json",{cache:"no-store"});if(!r.ok)throw new Error(`HTTP ${r.status}`);const data=await r.json();allModels=data.filter(m=>m.file).sort((a,b)=>(a.category||"Allgemein").localeCompare(b.category||"Allgemein","de",{numeric:true})||(a.title||a.file).localeCompare(b.title||b.file,"de",{numeric:true}));renderLibrary()}catch(e){console.error(e);library.innerHTML='<div class="empty">Die Bibliothek konnte nicht geladen werden.<br><br>Prüfe <b>models.json</b>.</div>'}}
-function renderLibrary(){const term=searchInput.value.trim().toLowerCase();const filtered=allModels.filter(m=>`${m.category||""} ${m.title||""} ${m.description||""} ${m.file||""}`.toLowerCase().includes(term));if(!filtered.length){library.innerHTML='<div class="empty">Keine Modelle gefunden.</div>';return}const grouped={};for(const m of filtered){const c=m.category||"Allgemein";(grouped[c]??=[]).push(m)}library.innerHTML="";for(const [category,models] of Object.entries(grouped)){const folder=document.createElement("div");folder.className="folder";const title=document.createElement("div");title.className="folder-title";title.textContent=`📁 ${category}`;folder.appendChild(title);for(const model of models){const btn=document.createElement("button");btn.className="model-button";btn.dataset.file=model.file;const name=document.createElement("span");name.textContent=model.title||model.file.split("/").pop().replace(/\.stl$/i,"");btn.appendChild(name);if(model.description){const d=document.createElement("span");d.className="model-description";d.textContent=model.description;btn.appendChild(d)}btn.onclick=()=>loadRemoteModel(model);folder.appendChild(btn)}library.appendChild(folder)}markActive()}
-function markActive(){document.querySelectorAll(".model-button").forEach(b=>b.classList.toggle("active",b.dataset.file===currentFile))}
-searchInput.addEventListener("input",renderLibrary);fileInput.addEventListener("change",e=>openLocalFile(e.target.files[0]));colorPicker.addEventListener("input",()=>material.color.set(colorPicker.value));wireframeBtn.onclick=()=>{wireframe=!wireframe;material.wireframe=wireframe;wireframeBtn.textContent=wireframe?"Drahtgitter: ein":"Drahtgitter: aus"};resetBtn.onclick=()=>mesh&&fitCameraToObject(mesh);fullscreenBtn.onclick=async()=>document.fullscreenElement?document.exitFullscreen():viewerWrap.requestFullscreen();
-function resize(){camera.aspect=viewer.clientWidth/viewer.clientHeight;camera.updateProjectionMatrix();renderer.setSize(viewer.clientWidth,viewer.clientHeight)}window.addEventListener("resize",resize);document.addEventListener("fullscreenchange",()=>setTimeout(resize,50));
-function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera)}camera.position.set(100,80,120);controls.target.set(0,0,0);controls.update();animate();loadLibrary();
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(viewer.clientWidth,viewer.clientHeight);
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+viewer.appendChild(renderer.domElement);
+
+const controls=new OrbitControls(camera,renderer.domElement);
+controls.enableDamping=true; controls.screenSpacePanning=true;
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x666666,2));
+const l1=new THREE.DirectionalLight(0xffffff,3);l1.position.set(3,4,5);scene.add(l1);
+const l2=new THREE.DirectionalLight(0xffffff,1.5);l2.position.set(-4,2,-3);scene.add(l2);
+
+const grid=new THREE.GridHelper(200,20,0x999999,0xcccccc);
+grid.material.opacity=.25;grid.material.transparent=true;scene.add(grid);
+
+const loader=new STLLoader();
+const material=new THREE.MeshStandardMaterial({color:colorPicker.value,roughness:.55,metalness:.08});
+
+let mesh=null,wireframe=false,allModels=[],currentPath=null;
+
+function fit(object){
+  const box=new THREE.Box3().setFromObject(object),size=new THREE.Vector3(),center=new THREE.Vector3();
+  box.getSize(size);box.getCenter(center);
+  const maxDim=Math.max(size.x,size.y,size.z)||1;
+  const fov=THREE.MathUtils.degToRad(camera.fov);
+  const z=Math.abs(maxDim/(2*Math.tan(fov/2)))*1.65;
+  camera.position.set(center.x+z*.65,center.y+z*.45,center.z+z);
+  camera.near=Math.max(maxDim/1000,.01);camera.far=Math.max(maxDim*100,1000);camera.updateProjectionMatrix();
+  controls.target.copy(center);controls.minDistance=maxDim*.05;controls.maxDistance=maxDim*20;controls.update();
+  grid.scale.setScalar(Math.max(maxDim/200,.01));
+}
+
+function showGeometry(g,name){
+  if(mesh){scene.remove(mesh);mesh.geometry?.dispose();}
+  g.computeVertexNormals();g.center();g.computeBoundingBox();
+  mesh=new THREE.Mesh(g,material);mesh.rotation.x=-Math.PI/2;scene.add(mesh);fit(mesh);
+  const tris=Math.floor((g.attributes.position?.count||0)/3);
+  const s=new THREE.Vector3();g.boundingBox.getSize(s);
+  status.textContent=`${name} · ${tris.toLocaleString("de-CH")} Dreiecke · ${s.x.toFixed(1)} × ${s.y.toFixed(1)} × ${s.z.toFixed(1)} mm`;
+}
+
+async function loadModel(model){
+  loading.classList.add("show");currentPath=model.path;markActive();
+  try{
+    const r=await fetch(model.rawUrl); if(!r.ok)throw new Error(r.status);
+    showGeometry(loader.parse(await r.arrayBuffer()),model.name);
+    downloadBtn.href=model.rawUrl;downloadBtn.download=model.name;downloadBtn.classList.remove("disabled");
+  }catch(e){console.error(e);status.textContent="Das Modell konnte nicht geladen werden."}
+  finally{loading.classList.remove("show")}
+}
+
+function openLocal(file){
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{try{currentPath=null;markActive();showGeometry(loader.parse(e.target.result),file.name);downloadBtn.classList.add("disabled")}catch(err){status.textContent="Die STL-Datei konnte nicht gelesen werden."}};
+  reader.readAsArrayBuffer(file);
+}
+
+async function loadLibrary(){
+  if(!repoInfo){
+    library.innerHTML='<div class="empty">Repository konnte nicht automatisch erkannt werden. Trage OWNER und REPO oben in app.js ein.</div>';
+    return;
+  }
+  try{
+    const r=await fetch(apiTreeUrl()); if(!r.ok)throw new Error(r.status);
+    const data=await r.json();
+    const root=CONFIG.STL_ROOT.replace(/^\/+|\/+$/g,"");
+    allModels=data.tree
+      .filter(x=>x.type==="blob"&&x.path.toLowerCase().endsWith(".stl"))
+      .filter(x=>!root||x.path.startsWith(root+"/"))
+      .map(x=>{
+        const rel=root?x.path.slice(root.length+1):x.path;
+        const parts=rel.split("/"),name=parts.pop();
+        return{name,path:x.path,relativePath:rel,folders:parts,rawUrl:rawUrl(x.path)};
+      })
+      .sort((a,b)=>a.relativePath.localeCompare(b.relativePath,"de",{numeric:true}));
+    renderLibrary();
+  }catch(e){
+    console.error(e);
+    library.innerHTML='<div class="empty">GitHub-Bibliothek konnte nicht geladen werden. Prüfe Repository, Branch und STL_ROOT.</div>';
+  }
+}
+
+function makeTree(models){
+  const root={name:"",folders:new Map(),files:[]};
+  for(const m of models){
+    let n=root;
+    for(const f of m.folders){
+      if(!n.folders.has(f))n.folders.set(f,{name:f,folders:new Map(),files:[]});
+      n=n.folders.get(f);
+    }
+    n.files.push(m);
+  }
+  return root;
+}
+
+function renderFolder(node,parent){
+  const el=document.createElement("div");el.className="folder";
+  const row=document.createElement("div");row.className="folder-row";
+  const toggle=document.createElement("button");toggle.className="folder-toggle";toggle.textContent="▼";
+  const name=document.createElement("span");name.textContent="📁 "+node.name;
+  row.append(toggle,name);el.append(row);
+
+  const children=document.createElement("div");children.className="folder-children";
+
+  [...node.folders.values()].sort((a,b)=>a.name.localeCompare(b.name,"de",{numeric:true})).forEach(f=>renderFolder(f,children));
+  [...node.files].sort((a,b)=>a.name.localeCompare(b.name,"de",{numeric:true})).forEach(m=>{
+    const b=document.createElement("button");b.className="model-button";b.dataset.path=m.path;
+    b.innerHTML=`<span>${m.name.replace(/\.stl$/i,"")}</span><span class="model-path">${m.relativePath}</span>`;
+    b.onclick=()=>loadModel(m);children.appendChild(b);
+  });
+
+  toggle.onclick=()=>{el.classList.toggle("collapsed");toggle.textContent=el.classList.contains("collapsed")?"▶":"▼"};
+  el.append(children);parent.appendChild(el);
+}
+
+function renderLibrary(){
+  const term=searchInput.value.trim().toLowerCase();
+  const filtered=allModels.filter(m=>m.relativePath.toLowerCase().includes(term));
+  if(!filtered.length){library.innerHTML='<div class="empty">Keine STL-Dateien gefunden.</div>';return}
+  const tree=makeTree(filtered);library.innerHTML="";
+  [...tree.folders.values()].sort((a,b)=>a.name.localeCompare(b.name,"de",{numeric:true})).forEach(f=>renderFolder(f,library));
+  if(tree.files.length)renderFolder({name:"Allgemein",folders:new Map(),files:tree.files},library);
+  markActive();
+}
+
+function markActive(){
+  document.querySelectorAll(".model-button").forEach(b=>b.classList.toggle("active",b.dataset.path===currentPath));
+}
+
+searchInput.oninput=renderLibrary;
+fileInput.onchange=e=>openLocal(e.target.files[0]);
+colorPicker.oninput=()=>material.color.set(colorPicker.value);
+wireframeBtn.onclick=()=>{wireframe=!wireframe;material.wireframe=wireframe;wireframeBtn.textContent=wireframe?"Drahtgitter: ein":"Drahtgitter: aus"};
+resetBtn.onclick=()=>mesh&&fit(mesh);
+fullscreenBtn.onclick=async()=>document.fullscreenElement?document.exitFullscreen():viewerWrap.requestFullscreen();
+
+function resize(){camera.aspect=viewer.clientWidth/viewer.clientHeight;camera.updateProjectionMatrix();renderer.setSize(viewer.clientWidth,viewer.clientHeight)}
+addEventListener("resize",resize);
+document.addEventListener("fullscreenchange",()=>setTimeout(resize,50));
+
+(function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera)})();
+camera.position.set(100,80,120);
+loadLibrary();
